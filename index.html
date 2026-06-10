@@ -325,6 +325,7 @@ select.inp{cursor:pointer}
     <div class="topbar-r">
       <span class="badge-user" id="user-badge" onclick="openModal('modal-user')">👤 <span id="user-name-label">—</span></span>
       <span class="badge-admin" id="admin-badge" style="display:none">🔐 Admin</span>
+      <button class="btn" id="btn-settings" onclick="openModal('modal-settings')" style="display:none" title="Editar días del viaje">⚙️</button>
       <button class="btn" id="btn-role" onclick="toggleRole()">Modo admin</button>
       <button class="btn pri" onclick="openAddPanel()">+ Propuesta</button>
     </div>
@@ -443,6 +444,19 @@ select.inp{cursor:pointer}
     <div class="modal-acts">
       <button class="btn" onclick="closeModal('modal-login')">Cancelar</button>
       <button class="btn pri" onclick="doLogin()">Entrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal: settings (edit days) -->
+<div class="modal-bg" id="modal-settings">
+  <div class="modal">
+    <h2>⚙️ Editar días del viaje</h2>
+    <p>Cambia el nombre de la ciudad o zona para cada día. Los cambios se guardan al pulsar "Guardar".</p>
+    <div class="day-setup-list" id="settings-day-list"></div>
+    <div class="modal-acts">
+      <button class="btn" onclick="closeModal('modal-settings')">Cancelar</button>
+      <button class="btn pri" onclick="saveDaySettings()">Guardar</button>
     </div>
   </div>
 </div>
@@ -1148,6 +1162,7 @@ function logoutAdmin(){S.role='member';updateRoleUI();renderListPanel();toast('S
 function updateRoleUI(){
   var isAdmin=S.role==='admin';
   document.getElementById('admin-badge').style.display=isAdmin?'':'none';
+  document.getElementById('btn-settings').style.display=isAdmin?'':'none';
   document.getElementById('btn-role').textContent=isAdmin?'Cerrar sesión admin':'Modo admin';
   document.getElementById('btn-role').className=isAdmin?'btn danger':'btn';
 }
@@ -1156,7 +1171,30 @@ function updateUserBadge(){document.getElementById('user-name-label').textConten
 // ══════════════════════════════════════════════════════
 //  MODALS / TOASTS
 // ══════════════════════════════════════════════════════
-function openModal(id){document.getElementById(id).classList.add('open');}
+function openModal(id){
+  if(id==='modal-settings'){
+    document.getElementById('settings-day-list').innerHTML=S.days.map(function(d,i){
+      return '<div class="day-setup-row">'+
+        '<div class="day-setup-date">'+formatDateShort(d.date)+'</div>'+
+        '<div class="day-setup-wd">'+getWeekday(d.date)+'</div>'+
+        '<input class="day-setup-inp" id="sdi-'+i+'" placeholder="Ciudad / zona…" value="'+d.city+'">'+
+        '</div>';
+    }).join('');
+  }
+  document.getElementById(id).classList.add('open');
+}
+function saveDaySettings(){
+  S.days.forEach(function(d,i){
+    var el=document.getElementById('sdi-'+i);
+    if(el) d.city=el.value.trim();
+  });
+  saveConfig();
+  closeModal('modal-settings');
+  renderDayFilter();
+  updateTripHeader();
+  if(S.mainTab==='agenda') renderAgenda();
+  toast('Días actualizados ✓','g');
+}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal-bg.open').forEach(function(el){el.classList.remove('open');});});
 document.querySelectorAll('.modal-bg').forEach(function(el){el.addEventListener('click',function(e){if(e.target===el)el.classList.remove('open');});});
@@ -1170,10 +1208,45 @@ function toast(msg,type){
 // ══════════════════════════════════════════════════════
 //  BOOT
 // ══════════════════════════════════════════════════════
+var SRI_LANKA_DEFAULT = {
+  tripName: 'Sri Lanka — Octubre 2025',
+  country: 'Sri Lanka',
+  countryCenter: [80.7718, 7.8731],
+  countryZoom: 7,
+  adminPass: 'admin123',
+  days: [
+    {date:'2025-10-09', city:'Colombo — Llegada'},
+    {date:'2025-10-10', city:'Sigiriya'},
+    {date:'2025-10-11', city:'Sigiriya'},
+    {date:'2025-10-12', city:'Kandy'},
+    {date:'2025-10-13', city:'Kandy'},
+    {date:'2025-10-14', city:'Tren a Ella'},
+    {date:'2025-10-15', city:'Ella'},
+    {date:'2025-10-16', city:'Ella'},
+    {date:'2025-10-17', city:'Hiriketiya'},
+    {date:'2025-10-18', city:'Hiriketiya'},
+    {date:'2025-10-19', city:'Tangalle'},
+    {date:'2025-10-20', city:'Tangalle'},
+    {date:'2025-10-21', city:'Mirissa'},
+    {date:'2025-10-22', city:'Mirissa'},
+    {date:'2025-10-23', city:'Galle + Unawatuna'},
+    {date:'2025-10-24', city:'Colombo — Despedida'},
+    {date:'2025-10-25', city:'Vuelo 10:15h'},
+  ]
+};
+
 async function boot(){
   await loadState();
-  renderSetup();
-  if(S.configured){
+  if(!S.configured){
+    // preload Sri Lanka — skip wizard
+    Object.assign(S, SRI_LANKA_DEFAULT);
+    S.configured = true;
+    await saveConfig();
+    document.getElementById('setup-screen').classList.add('hidden');
+    document.getElementById('app').style.display='flex';
+    bootApp();
+  } else {
+    renderSetup();
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('app').style.display='flex';
     bootApp();
