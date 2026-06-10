@@ -454,8 +454,13 @@ select.inp{cursor:pointer}
       <div class="map-hint" id="map-hint">Clic en el mapa para fijar la ubicación</div>
       <div class="map-controls">
         <button class="map-ctrl-btn" onclick="mapFitAll()" title="Ver ruta completa">🌍</button>
-        <button class="map-ctrl-btn" onclick="mapFitToday()" title="Ver día seleccionado">📅</button>
         <button class="map-ctrl-btn" id="btn-toggle-list" onclick="toggleMobileList()" title="Mostrar/ocultar lista" style="display:none">☰</button>
+      </div>
+      <!-- day navigator bar -->
+      <div id="day-nav" style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:0;z-index:10;background:var(--bg);border:1px solid var(--border);border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.12);overflow:hidden">
+        <button onclick="dayNavStep(-1)" style="width:36px;height:36px;border:none;background:none;cursor:pointer;font-size:16px;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:background .12s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='none'">‹</button>
+        <div id="day-nav-label" style="font-size:12px;font-weight:600;color:var(--text);padding:0 10px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis;text-align:center;cursor:pointer" onclick="mapFitToday()">—</div>
+        <button onclick="dayNavStep(1)" style="width:36px;height:36px;border:none;background:none;cursor:pointer;font-size:16px;color:var(--text2);display:flex;align-items:center;justify-content:center;transition:background .12s" onmouseover="this.style.background='var(--bg2)'" onmouseout="this.style.background='none'">›</button>
       </div>
     </div>
     <div id="view-agenda" style="flex:1;overflow-y:auto;display:none">
@@ -747,7 +752,12 @@ function initMap(){
     style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxzoom:19}},layers:[{id:'osm',type:'raster',source:'osm'}]},
     center:S.countryCenter,zoom:S.countryZoom,
   });
-  map.on('load',function(){renderAllMarkers();});
+  map.on('load',function(){
+    renderAllMarkers();
+    // init day nav to first day
+    _dayNavIdx=0;
+    setTimeout(updateDayNav, 200);
+  });
   map.on('click',function(e){
     if(!S.addingMode)return;
     var coord={lng:parseFloat(e.lngLat.lng.toFixed(5)),lat:parseFloat(e.lngLat.lat.toFixed(5))};
@@ -790,20 +800,55 @@ function renderCityStars(){
 }
 async function geocodeCityForStar(city){
   try{
-    var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(city+' '+S.country)+'&accept-language=es';
+    // strip decorators like "— Llegada", "+ Unawatuna", "Tren a", "Vuelo 10:15h" etc.
+    var clean=city
+      .replace(/—.*$/,'').replace(/–.*$/,'')   // remove em-dash suffixes
+      .replace(/\+.*$/,'')                       // remove + second city (handle separately)
+      .replace(/^Tren a\s+/i,'')                 // "Tren a Ella" → "Ella"
+      .replace(/Vuelo.*/i,'')                    // "Vuelo 10:15h" → skip
+      .replace(/Despedida.*/i,'')
+      .trim();
+    if(!clean||clean.length<2) return;
+    var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(clean+' '+S.country)+'&accept-language=es';
     var res=await fetch(url,{headers:{'Accept-Language':'es'}});
     var data=await res.json();
     if(!data||!data[0])return;
     var lng=parseFloat(data[0].lon),lat=parseFloat(data[0].lat);
     var el=document.createElement('div');
     el.className='city-star';
-    el.innerHTML='<div class="city-star-pin">⭐</div><div class="city-star-lbl">'+city+'</div>';
+    el.innerHTML='<div class="city-star-pin">⭐</div><div class="city-star-lbl">'+clean+'</div>';
     var m=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(map);
     cityStarMarkers.push(m);
+    // if city has "+", geocode second part too
+    if(city.indexOf('+')!==-1){
+      var second=city.split('+')[1].trim().replace(/—.*$/,'').replace(/–.*$/,'').trim();
+      if(second&&second.length>1) geocodeCityForStar(second);
+    }
   }catch(e){}
 }
 
 // ── Map fit controls ──
+var _dayNavIdx = 0;   // current day index in S.days
+
+function updateDayNav(){
+  if(!S.days.length) return;
+  _dayNavIdx = Math.max(0, Math.min(_dayNavIdx, S.days.length-1));
+  var day = S.days[_dayNavIdx];
+  var label = formatDateShort(day.date)+' · '+getWeekday(day.date).slice(0,3)+(day.city?' · '+day.city:'');
+  var el = document.getElementById('day-nav-label');
+  if(el) el.textContent = label;
+  // sync sidebar filter
+  S.filterDay = day.date;
+  renderDayFilter();
+  renderListPanel();
+}
+
+function dayNavStep(dir){
+  _dayNavIdx = Math.max(0, Math.min(_dayNavIdx + dir, S.days.length-1));
+  updateDayNav();
+  mapFitToday();
+}
+
 function mapFitAll(){
   if(!map)return;
   var pts=[];
@@ -812,34 +857,47 @@ function mapFitAll(){
   if(!pts.length){map.flyTo({center:S.countryCenter,zoom:S.countryZoom,duration:600});return;}
   var lngs=pts.map(function(p){return p[0];}),lats=pts.map(function(p){return p[1];});
   map.fitBounds([[Math.min.apply(null,lngs),Math.min.apply(null,lats)],[Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:50,maxZoom:13,duration:600});
+  // reset day nav label to show all
+  var el=document.getElementById('day-nav-label');
+  if(el) el.textContent='Todos los días';
+  S.filterDay='all';renderDayFilter();renderListPanel();
 }
+
 function mapFitToday(){
-  if(!map)return;
-  // use filter day or today's date
-  var targetDate=S.filterDay!=='all'?S.filterDay:null;
-  if(!targetDate){
-    // find today or nearest upcoming day
-    var today=new Date();
-    var todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-    var match=S.days.find(function(d){return d.date>=todayStr;});
-    targetDate=match?match.date:S.days[0].date;
-  }
-  var day=S.days.find(function(d){return d.date===targetDate;});
+  if(!map||!S.days.length)return;
+  var day=S.days[_dayNavIdx];
+  var targetDate=day.date;
   var pts=S.proposals.filter(function(p){return p.dayDate===targetDate&&p.status!=='rejected';}).map(function(p){return[p.lng,p.lat];});
-  // also try to use city star if no proposals
-  if(!pts.length&&day&&day.city){
-    // fly to country center with day info toast
-    toast('📅 '+formatDateShort(targetDate)+(day.city?' · '+day.city:''),'g');
-    map.flyTo({center:S.countryCenter,zoom:10,duration:600});
+
+  // find city star for this day
+  var cityName=day.city?day.city.replace(/—.*$/,'').replace(/–.*$/,'').replace(/\+.*$/,'').replace(/^Tren a\s+/i,'').replace(/Vuelo.*/i,'').replace(/Despedida.*/i,'').trim():'';
+  var starMatch=null;
+  if(cityName){
+    cityStarMarkers.forEach(function(m){
+      var lbl=m.getElement().querySelector('.city-star-lbl');
+      if(lbl&&lbl.textContent.toLowerCase()===cityName.toLowerCase()) starMatch=m;
+    });
+  }
+
+  if(!pts.length&&starMatch){
+    var c=starMatch.getLngLat();
+    map.flyTo({center:[c.lng,c.lat],zoom:12,duration:600});
     return;
   }
-  if(!pts.length){map.flyTo({center:S.countryCenter,zoom:S.countryZoom,duration:600});return;}
-  if(pts.length===1){map.flyTo({center:pts[0],zoom:14,duration:600});}
+  if(!pts.length&&!starMatch){
+    if(cityName) toast('Sin propuestas para '+cityName,'a');
+    map.flyTo({center:S.countryCenter,zoom:S.countryZoom,duration:600});
+    return;
+  }
+
+  // add star to points for better framing
+  if(starMatch){var c=starMatch.getLngLat();pts.push([c.lng,c.lat]);}
+
+  if(pts.length===1){map.flyTo({center:pts[0],zoom:13,duration:600});}
   else{
     var lngs=pts.map(function(p){return p[0];}),lats=pts.map(function(p){return p[1];});
     map.fitBounds([[Math.min.apply(null,lngs),Math.min.apply(null,lats)],[Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:60,maxZoom:14,duration:600});
   }
-  if(day) toast('📅 '+formatDateShort(targetDate)+(day.city?' · '+day.city:''),'g');
 }
 
 // ── Mobile list toggle ──
