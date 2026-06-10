@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PlanViaje — Escapada a Roma</title>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#fff; --bg2:#f5f4f0; --bg3:#e9e8e3;
+  --text:#1a1a1a; --text2:#6b6a65; --text3:#a09f9a;
+  --border:rgba(0,0,0,.09); --border2:rgba(0,0,0,.16);
+  --teal:#1D9E75; --teal-bg:#E1F5EE; --teal-text:#085041;
+  --amber:#BA7517; --amber-bg:#FAEEDA; --amber-text:#633806;
+  --red:#E24B4A; --red-bg:#FCEBEB; --red-text:#791F1F;
+  --purple:#7F77DD; --purple-bg:#EEEDFE; --purple-text:#26215C;
+  --blue:#378ADD; --blue-bg:#E6F1FB; --blue-text:#042C53;
+  --r:10px; --rs:7px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;
+  --text:#f2f2f7;--text2:#aeaeb2;--text3:#636366;
+  --border:rgba(255,255,255,.09);--border2:rgba(255,255,255,.16);
+}}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);overflow:hidden;}
+#app{display:flex;flex-direction:column;height:100vh;}
+
+/* topbar */
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;gap:10px;}
+.trip-name{font-size:14px;font-weight:700;}
+.trip-sub{font-size:11px;color:var(--text2);margin-top:1px;}
+.topbar-r{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+.btn{font-size:12px;padding:5px 12px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg2);color:var(--text2);cursor:pointer;font-family:var(--font);transition:all .13s;white-space:nowrap;}
+.btn:hover{background:var(--bg3);}
+.btn.pri{background:var(--teal);color:#fff;border-color:var(--teal);font-weight:500;}
+.btn.pri:hover{opacity:.88;}
+.btn.danger{background:var(--red-bg);color:var(--red-text);border-color:var(--red);}
+.badge-admin{font-size:11px;padding:3px 9px;background:var(--purple-bg);color:var(--purple-text);border-radius:999px;font-weight:600;}
+.badge-user{font-size:11px;padding:3px 9px;background:var(--blue-bg);color:var(--blue-text);border-radius:999px;font-weight:600;cursor:pointer;}
+
+/* statsbar */
+.statsbar{display:flex;gap:6px;padding:7px 12px;border-bottom:1px solid var(--border);flex-shrink:0;}
+.stat{flex:1;text-align:center;padding:5px 4px;background:var(--bg2);border-radius:var(--rs);}
+.stat-n{font-size:15px;font-weight:700;}
+.stat-l{font-size:10px;color:var(--text2);margin-top:1px;}
+
+/* layout */
+.body{display:flex;flex:1;overflow:hidden;}
+.sidebar{width:308px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg);}
+.tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;}
+.tab{flex:1;padding:8px 3px;font-size:11px;text-align:center;cursor:pointer;background:none;border:none;border-bottom:2px solid transparent;color:var(--text2);font-family:var(--font);transition:all .12s;}
+.tab.active{color:var(--teal);border-bottom-color:var(--teal);font-weight:700;}
+.list{flex:1;overflow-y:auto;padding:8px 9px;}
+.list::-webkit-scrollbar{width:3px;}
+.list::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+
+/* card */
+.card{background:var(--bg);border:1px solid var(--border);border-left:3px solid var(--border2);border-radius:var(--r);padding:9px 10px;margin-bottom:7px;cursor:pointer;transition:box-shadow .12s,border-color .12s;}
+.card:hover{border-color:var(--border2);}
+.card.sel{box-shadow:0 0 0 2px var(--teal);border-color:var(--teal);}
+.card.s-accepted{border-left-color:var(--teal);}
+.card.s-rejected{border-left-color:var(--red);opacity:.55;}
+.card.s-pending{border-left-color:var(--amber);}
+.card-top{display:flex;align-items:flex-start;gap:7px;margin-bottom:5px;}
+.card-ico{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background:var(--bg2);}
+.card-meta{flex:1;min-width:0;}
+.card-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.card-type{font-size:11px;color:var(--text2);}
+.card-desc{font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:6px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+
+/* vote bar */
+.vote-row{display:flex;align-items:center;gap:7px;margin-bottom:6px;}
+.vbtn{display:flex;align-items:center;gap:4px;font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--border2);background:var(--bg2);cursor:pointer;font-family:var(--font);transition:all .13s;font-weight:500;}
+.vbtn:hover{background:var(--bg3);}
+.vbtn.voted-up{background:var(--teal-bg);border-color:var(--teal);color:var(--teal-text);}
+.vbtn.voted-dn{background:var(--red-bg);border-color:var(--red);color:var(--red-text);}
+.vbar-wrap{flex:1;height:5px;background:var(--bg3);border-radius:999px;overflow:hidden;}
+.vbar-fill{height:100%;border-radius:999px;transition:width .35s ease;}
+.vote-score{font-size:11px;font-weight:700;min-width:22px;text-align:right;}
+
+/* card footer */
+.card-foot{display:flex;align-items:center;justify-content:space-between;}
+.card-author{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);}
+.avt{width:17px;height:17px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:var(--text2);}
+.sbadge{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:600;}
+.sb-p{background:var(--amber-bg);color:var(--amber-text);}
+.sb-a{background:var(--teal-bg);color:var(--teal-text);}
+.sb-r{background:var(--red-bg);color:var(--red-text);}
+.card-acts{display:flex;gap:3px;}
+.act{width:25px;height:25px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .12s;}
+.act:hover.acc{background:var(--teal-bg);border-color:var(--teal);}
+.act:hover.rej{background:var(--red-bg);border-color:var(--red);}
+.act:hover.del{background:var(--red-bg);border-color:var(--red);}
+
+/* ranking tab */
+.rank-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px;margin-bottom:7px;display:flex;align-items:center;gap:10px;}
+.rank-num{font-size:18px;font-weight:800;min-width:28px;text-align:center;}
+.rank-num.r1{color:gold;} .rank-num.r2{color:silver;} .rank-num.r3{color:#cd7f32;}
+.rank-body{flex:1;min-width:0;}
+.rank-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.rank-type{font-size:11px;color:var(--text2);}
+.rank-bar-wrap{height:6px;background:var(--bg3);border-radius:999px;margin-top:5px;overflow:hidden;}
+.rank-bar{height:100%;border-radius:999px;transition:width .4s ease;}
+.rank-score{font-size:13px;font-weight:700;flex-shrink:0;}
+
+/* add form */
+.addform{padding:11px 11px;border-top:1px solid var(--border);flex-shrink:0;display:none;overflow-y:auto;max-height:55vh;}
+.addform::-webkit-scrollbar{width:3px;}.addform::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+.addform.open{display:block;}
+.form-lbl{font-size:10px;font-weight:700;color:var(--text3);margin-bottom:7px;text-transform:uppercase;letter-spacing:.05em;}
+.inp{width:100%;font-size:13px;padding:7px 9px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-family:var(--font);outline:none;transition:border-color .12s;margin-bottom:6px;}
+.inp:focus{border-color:var(--teal);}
+.inp-row{display:flex;gap:6px;margin-bottom:6px;}
+.inp-row .inp{margin-bottom:0;}
+textarea.inp{height:52px;resize:none;line-height:1.45;}
+select.inp{cursor:pointer;}
+.pin-hint{font-size:11px;color:var(--text3);margin-bottom:6px;}
+.pin-hint.ok{color:var(--teal);}
+/* geocoder */
+.geo-wrap{position:relative;margin-bottom:6px;}
+.geo-inp{width:100%;font-size:13px;padding:7px 9px 7px 30px;border-radius:var(--rs);border:1px solid var(--border2);background:var(--bg2);color:var(--text);font-family:var(--font);outline:none;transition:border-color .12s;}
+.geo-inp:focus{border-color:var(--teal);}
+.geo-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);font-size:13px;pointer-events:none;color:var(--text3);}
+.geo-spin{position:absolute;right:9px;top:50%;transform:translateY(-50%);width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--teal);border-radius:50%;animation:spin .6s linear infinite;display:none;}
+.geo-spin.show{display:block;}
+@keyframes spin{to{transform:translateY(-50%) rotate(360deg);}}
+.geo-results{position:absolute;top:100%;left:0;right:0;background:var(--bg);border:1px solid var(--border2);border-radius:var(--rs);z-index:50;box-shadow:0 4px 16px rgba(0,0,0,.12);max-height:160px;overflow-y:auto;display:none;}
+.geo-results.open{display:block;}
+.geo-result{padding:7px 10px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s;line-height:1.4;}
+.geo-result:last-child{border-bottom:none;}
+.geo-result:hover{background:var(--bg2);}
+.geo-result strong{font-weight:600;color:var(--text);display:block;}
+.geo-result span{color:var(--text3);font-size:11px;}
+.geo-divider{display:flex;align-items:center;gap:6px;margin-bottom:6px;}
+.geo-divider-line{flex:1;height:1px;background:var(--border);}
+.geo-divider-txt{font-size:10px;color:var(--text3);white-space:nowrap;}
+
+/* map */
+.map-wrap{flex:1;position:relative;}
+#map{width:100%;height:100%;}
+.maplibregl-popup-content{border-radius:var(--r)!important;padding:0!important;border:1px solid var(--border)!important;box-shadow:0 4px 20px rgba(0,0,0,.12)!important;min-width:210px;max-width:250px;font-family:var(--font)!important;}
+.pop-inner{padding:11px 13px;}
+.pop-top{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+.pop-ico{font-size:19px;}
+.pop-name{font-size:13px;font-weight:700;}
+.pop-type{font-size:11px;color:var(--text2);}
+.pop-desc{font-size:12px;color:var(--text2);line-height:1.45;margin-bottom:7px;}
+.pop-votes{display:flex;align-items:center;gap:7px;margin-bottom:7px;}
+.pop-vbtn{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--border2);background:var(--bg2);cursor:pointer;font-family:var(--font);font-weight:500;}
+.pop-vbtn.voted-up{background:var(--teal-bg);border-color:var(--teal);color:var(--teal-text);}
+.pop-vbtn.voted-dn{background:var(--red-bg);border-color:var(--red);color:var(--red-text);}
+.pop-score{font-size:12px;font-weight:700;color:var(--text2);}
+.pop-foot{display:flex;justify-content:space-between;align-items:center;}
+.pop-author{font-size:11px;color:var(--text3);}
+.pop-acts{display:flex;gap:5px;}
+.pop-btn{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid;cursor:pointer;font-family:var(--font);font-weight:600;}
+.pop-btn.acc{background:var(--teal-bg);color:var(--teal-text);border-color:var(--teal);}
+.pop-btn.rej{background:var(--red-bg);color:var(--red-text);border-color:var(--red);}
+
+/* map overlay */
+.map-ov{position:absolute;top:10px;left:10px;display:flex;gap:5px;flex-wrap:wrap;z-index:10;}
+.map-ov-r{position:absolute;top:10px;right:10px;z-index:10;}
+.legend{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:8px 11px;font-size:11px;}
+.leg-row{display:flex;align-items:center;gap:5px;color:var(--text2);margin-bottom:3px;}
+.leg-row:last-child{margin-bottom:0;}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.map-hint{position:absolute;bottom:36px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.72);color:#fff;font-size:12px;padding:6px 14px;border-radius:999px;pointer-events:none;white-space:nowrap;z-index:10;display:none;}
+.map-hint.show{display:block;}
+
+/* modals */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.42);z-index:200;display:none;align-items:center;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal{background:var(--bg);border-radius:14px;padding:22px;width:340px;box-shadow:0 8px 40px rgba(0,0,0,.2);}
+.modal h2{font-size:16px;font-weight:700;margin-bottom:4px;}
+.modal p{font-size:13px;color:var(--text2);margin-bottom:16px;line-height:1.5;}
+.modal-acts{display:flex;gap:7px;justify-content:flex-end;margin-top:14px;}
+.modal-err{font-size:12px;color:var(--red);margin-top:5px;min-height:16px;}
+
+/* toasts */
+.toasts{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;}
+.toast{background:#111;color:#fff;font-size:13px;padding:7px 16px;border-radius:999px;white-space:nowrap;animation:tIn .18s ease;box-shadow:0 2px 10px rgba(0,0,0,.25);}
+.toast.g{border-left:3px solid var(--teal);}
+.toast.r{border-left:3px solid var(--red);}
+.toast.a{border-left:3px solid var(--amber);}
+@keyframes tIn{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:translateY(0);}}
+
+.empty{padding:26px 14px;text-align:center;color:var(--text3);font-size:13px;}
+.empty-ico{font-size:26px;margin-bottom:7px;}
+.marker{width:32px;height:38px;cursor:pointer;display:flex;flex-direction:column;align-items:center;}
+.mpin{width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;border:2px solid rgba(255,255,255,.85);box-shadow:0 2px 8px rgba(0,0,0,.2);transition:transform .14s;}
+.marker:hover .mpin{transform:rotate(-45deg) scale(1.12);}
+.mico{transform:rotate(45deg);font-size:14px;line-height:1;}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="topbar">
+    <div>
+      <div class="trip-name">✈️ Escapada a Roma</div>
+      <div class="trip-sub">Septiembre 2025 · código <strong>ROMA25</strong></div>
+    </div>
+    <div class="topbar-r">
+      <span class="badge-user" id="user-badge" onclick="openModal('modal-user')" title="Cambiar nombre">👤 <span id="user-name-label">—</span></span>
+      <span class="badge-admin" id="admin-badge" style="display:none">🔐 Admin</span>
+      <button class="btn" id="btn-role" onclick="toggleRole()">Modo admin</button>
+      <button class="btn pri" id="btn-addtop" onclick="openAddPanel()">+ Propuesta</button>
+    </div>
+  </div>
+
+  <div class="statsbar" id="statsbar"></div>
+
+  <div class="body">
+    <div class="sidebar">
+      <div class="tabs">
+        <button class="tab active" id="tab-all"      onclick="setTab('all')">Todas</button>
+        <button class="tab"        id="tab-pending"  onclick="setTab('pending')">Pendientes</button>
+        <button class="tab"        id="tab-accepted" onclick="setTab('accepted')">Seleccionadas</button>
+        <button class="tab"        id="tab-ranking"  onclick="setTab('ranking')">🏆 Ranking</button>
+      </div>
+      <div class="list" id="list"></div>
+      <div class="addform" id="addform">
+        <div class="form-lbl">Nueva propuesta</div>
+        <input class="inp" id="f-name" placeholder="Nombre de la propuesta *">
+        <div class="inp-row">
+          <select class="inp" id="f-type" style="flex:1.2">
+            <option value="hotel">🏨 Alojamiento</option>
+            <option value="restaurant">🍕 Restaurante</option>
+            <option value="attraction">🏛️ Atracción</option>
+            <option value="park">🌿 Parque</option>
+            <option value="transport">🚌 Transporte</option>
+            <option value="activity">🎭 Actividad</option>
+          </select>
+          <input class="inp" id="f-author" placeholder="Tu nombre *" style="flex:1">
+        </div>
+        <textarea class="inp" id="f-desc" placeholder="Descripción *"></textarea>
+
+        <div class="form-lbl" style="margin-top:2px">Ubicación</div>
+        <div class="geo-wrap">
+          <span class="geo-icon">🔍</span>
+          <input class="geo-inp" id="geo-search" placeholder="Busca el lugar en el mapa…" autocomplete="off" oninput="onGeoInput()" onkeydown="onGeoKey(event)">
+          <div class="geo-spin" id="geo-spin"></div>
+          <div class="geo-results" id="geo-results"></div>
+        </div>
+
+        <div class="geo-divider">
+          <div class="geo-divider-line"></div>
+          <div class="geo-divider-txt">o haz clic directamente en el mapa</div>
+          <div class="geo-divider-line"></div>
+        </div>
+
+        <div class="pin-hint" id="pin-hint">👆 Haz clic en el mapa para fijar la ubicación</div>
+        <button class="btn pri" style="width:100%;margin-top:3px" onclick="submitProposal()">Añadir propuesta</button>
+        <button class="btn" style="width:100%;margin-top:5px" onclick="closeAddPanel()">Cancelar</button>
+      </div>
+    </div>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="map-ov" id="filter-pills"></div>
+      <div class="map-ov-r">
+        <div class="legend">
+          <div class="leg-row"><div class="leg-dot" style="background:var(--amber)"></div>Pendiente</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--teal)"></div>Seleccionada</div>
+          <div class="leg-row"><div class="leg-dot" style="background:var(--red)"></div>Descartada</div>
+        </div>
+      </div>
+      <div class="map-hint" id="map-hint">Clic en el mapa para fijar la ubicación</div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: set username -->
+<div class="modal-bg" id="modal-user">
+  <div class="modal">
+    <h2>👤 Tu nombre</h2>
+    <p>Necesitas un nombre para votar y añadir propuestas. Solo puedes votar una vez por propuesta.</p>
+    <input class="inp" id="inp-username" placeholder="Tu nombre *" maxlength="24" onkeydown="if(event.key==='Enter')saveUsername()">
+    <div class="modal-err" id="user-err"></div>
+    <div class="modal-acts">
+      <button class="btn" onclick="closeModal('modal-user')">Cancelar</button>
+      <button class="btn pri" onclick="saveUsername()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: admin login -->
+<div class="modal-bg" id="modal-login">
+  <div class="modal">
+    <h2>🔐 Acceso de administrador</h2>
+    <p>El administrador puede aceptar, descartar y eliminar propuestas.</p>
+    <input class="inp" id="login-pass" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="modal-err" id="login-err"></div>
+    <div class="modal-acts">
+      <button class="btn" onclick="closeModal('modal-login')">Cancelar</button>
+      <button class="btn pri" onclick="doLogin()">Entrar</button>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text3)">Contraseña por defecto: <strong>admin123</strong></div>
+  </div>
+</div>
+
+<!-- MODAL: change password -->
+<div class="modal-bg" id="modal-pass">
+  <div class="modal">
+    <h2>🔑 Cambiar contraseña</h2>
+    <p>Nueva contraseña para el acceso de administrador.</p>
+    <input class="inp" id="np1" type="password" placeholder="Nueva contraseña">
+    <input class="inp" id="np2" type="password" placeholder="Repite la contraseña" onkeydown="if(event.key==='Enter')doChangePass()">
+    <div class="modal-err" id="pass-err"></div>
+    <div class="modal-acts">
+      <button class="btn" onclick="closeModal('modal-pass')">Cancelar</button>
+      <button class="btn pri" onclick="doChangePass()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  CONSTANTS
+// ══════════════════════════════════════════════════════
+var TM = {
+  hotel:      {icon:'🏨',label:'Alojamiento',color:'#D85A30'},
+  restaurant: {icon:'🍕',label:'Restaurante',color:'#BA7517'},
+  attraction: {icon:'🏛️',label:'Atracción',  color:'#7F77DD'},
+  park:       {icon:'🌿',label:'Parque',      color:'#1D9E75'},
+  transport:  {icon:'🚌',label:'Transporte',  color:'#378ADD'},
+  activity:   {icon:'🎭',label:'Actividad',   color:'#D4537E'},
+};
+var ST = {
+  pending:  {label:'Pendiente',   color:'#BA7517',cls:'sb-p'},
+  accepted: {label:'Seleccionada',color:'#1D9E75',cls:'sb-a'},
+  rejected: {label:'Descartada',  color:'#E24B4A',cls:'sb-r'},
+};
+var SEED = [
+  {id:1, name:'Hotel Colosseo',            type:'hotel',      author:'Sara',   desc:'Hotel 4★ a 5 min del Coliseo. Desayuno incluido y terraza con vistas.',        status:'accepted',lng:12.4922,lat:41.8902,votes:{}},
+  {id:2, name:'Trattoria da Luigi',        type:'restaurant', author:'Marc',   desc:'Auténtica trattoria romana. La fettuccine al ragú es impresionante.',           status:'accepted',lng:12.4681,lat:41.8986,votes:{}},
+  {id:3, name:'Coliseo Romano',            type:'attraction', author:'Ana',    desc:'Visita guiada en español al amanecer para evitar colas. Incluye Foro Romano.',  status:'accepted',lng:12.4922,lat:41.8905,votes:{}},
+  {id:4, name:'Villa Borghese',            type:'park',       author:'Jordi',  desc:'Parque enorme con museo increíble. Ideal para la tarde del domingo.',            status:'pending', lng:12.4923,lat:41.9145,votes:{}},
+  {id:5, name:'Piazza Navona',             type:'attraction', author:'Laia',   desc:'La mejor pizza bianca está justo al lado. Visitar al atardecer.',                status:'pending', lng:12.4731,lat:41.8992,votes:{}},
+  {id:6, name:'Airbnb Trastevere',         type:'hotel',      author:'Carlos', desc:'Apartamento para 8 en el barrio más bonito de Roma. Muy auténtico.',             status:'rejected',lng:12.4695,lat:41.8896,votes:{}},
+  {id:7, name:'Tour en Vespa',             type:'activity',   author:'Marta',  desc:'Ruta de 3h en vespa por los monumentos principales. Muy recomendado.',           status:'pending', lng:12.4822,lat:41.9058,votes:{}},
+  {id:8, name:'Mercado Campo de Fiori',    type:'attraction', author:'Sara',   desc:'Mercado matutino con productos locales. Perfecto antes del desayuno.',           status:'pending', lng:12.4722,lat:41.8956,votes:{}},
+  {id:9, name:'Fontana di Trevi',          type:'attraction', author:'Ana',    desc:'Imprescindible al anochecer cuando hay menos gente. Lleva una moneda.',          status:'accepted',lng:12.4833,lat:41.9009,votes:{}},
+  {id:10,name:'Vaticano + Capilla Sixtina',type:'attraction', author:'Jordi',  desc:'Reservar entrada con meses de antelación. Visita de mañana completa.',          status:'pending', lng:12.4534,lat:41.9029,votes:{}},
+];
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+var S = {
+  proposals:[],
+  role:'member',
+  tab:'all',
+  filterType:'all',
+  selectedId:null,
+  addingMode:false,
+  pendingCoord:null,
+  adminPass:'admin123',
+  nextId:100,
+  username: null,   // current user's name
+};
+var markers = {}, popups = {}, map = null;
+
+// ══════════════════════════════════════════════════════
+//  VOTE HELPERS
+// ══════════════════════════════════════════════════════
+function getVotes(p){
+  var v = p.votes||{};
+  var up=0,dn=0;
+  Object.values(v).forEach(function(x){x===1?up++:dn++;});
+  return {up:up,dn:dn,score:up-dn,total:up+dn};
+}
+function myVote(p){
+  if(!S.username) return 0;
+  return (p.votes||{})[S.username]||0;
+}
+function castVote(id, val){
+  if(!S.username){ openModal('modal-user'); return; }
+  var p = S.proposals.find(function(x){return x.id===id;});
+  if(!p) return;
+  if(!p.votes) p.votes={};
+  var prev = p.votes[S.username]||0;
+  if(prev===val){ delete p.votes[S.username]; } // toggle off
+  else { p.votes[S.username]=val; }
+  saveProposals();
+  renderList();
+  renderStats();
+  refreshMarker(p);
+  // refresh popup if open
+  if(popups[id]&&popups[id].isOpen()) popups[id].setHTML(buildPopupHTML(p));
+}
+window.castVote = castVote;
+
+function voteBar(p){
+  var v=getVotes(p);
+  if(v.total===0) return '<div class="vbar-wrap"><div class="vbar-fill" style="width:50%;background:var(--bg3)"></div></div>';
+  var pct = Math.round(v.up/v.total*100);
+  var col = pct>=60?'var(--teal)':pct<=40?'var(--red)':'var(--amber)';
+  return '<div class="vbar-wrap"><div class="vbar-fill" style="width:'+pct+'%;background:'+col+'"></div></div>';
+}
+function scoreColor(s){ return s>0?'var(--teal)':s<0?'var(--red)':'var(--text3)'; }
+
+// ══════════════════════════════════════════════════════
+//  STORAGE
+// ══════════════════════════════════════════════════════
+async function loadState(){
+  try{
+    var r1=await window.storage.get('trip_v3_proposals');
+    if(r1&&r1.value){S.proposals=JSON.parse(r1.value);S.nextId=Math.max(...S.proposals.map(function(p){return p.id;}),99)+1;}
+    else{S.proposals=SEED.map(function(p){return Object.assign({},p,{votes:{}});});S.nextId=20;}
+    // ensure votes field
+    S.proposals.forEach(function(p){if(!p.votes)p.votes={};});
+  }catch(e){S.proposals=SEED.map(function(p){return Object.assign({},p,{votes:{}});});S.nextId=20;}
+  try{var r2=await window.storage.get('trip_v3_pass');if(r2&&r2.value)S.adminPass=r2.value;}catch(e){}
+  try{var r3=await window.storage.get('trip_v3_user');if(r3&&r3.value)S.username=r3.value;}catch(e){}
+}
+async function saveProposals(){
+  try{await window.storage.set('trip_v3_proposals',JSON.stringify(S.proposals));}catch(e){}
+}
+async function savePass(p){try{await window.storage.set('trip_v3_pass',p);}catch(e){}}
+async function saveUser(u){try{await window.storage.set('trip_v3_user',u);}catch(e){}}
+
+// ══════════════════════════════════════════════════════
+//  MAP
+// ══════════════════════════════════════════════════════
+function initMap(){
+  map=new maplibregl.Map({
+    container:'map',
+    style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',maxzoom:19}},layers:[{id:'osm',type:'raster',source:'osm'}]},
+    center:[12.4822,41.8965],zoom:13,
+  });
+  map.on('load',function(){renderAllMarkers();});
+  map.on('click',function(e){
+    if(!S.addingMode) return;
+    var coord={lng:parseFloat(e.lngLat.lng.toFixed(5)),lat:parseFloat(e.lngLat.lat.toFixed(5))};
+    S.pendingCoord=coord;
+    updatePinHint();
+    if(window._tmpM) window._tmpM.remove();
+    var el=document.createElement('div');
+    el.innerHTML='<div style="width:18px;height:18px;border-radius:50%;background:#1D9E75;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)"></div>';
+    window._tmpM=new maplibregl.Marker({element:el}).setLngLat([coord.lng,coord.lat]).addTo(map);
+    toast('Ubicación fijada','g');
+  });
+}
+
+function createMarkerEl(p){
+  var el=document.createElement('div');
+  el.className='marker';
+  var col=ST[p.status].color;
+  el.style.opacity=p.status==='rejected'?'0.45':'1';
+  el.innerHTML='<div class="mpin" style="background:'+col+'"><span class="mico">'+TM[p.type].icon+'</span></div>';
+  el.addEventListener('click',function(e){e.stopPropagation();if(!S.addingMode)selectProposal(p.id);});
+  return el;
+}
+function renderAllMarkers(){S.proposals.forEach(function(p){if(!markers[p.id])addMarker(p);});}
+function addMarker(p){
+  var el=createMarkerEl(p);
+  var popup=new maplibregl.Popup({offset:28,closeButton:false,maxWidth:'260px'});
+  popup.setHTML(buildPopupHTML(p));
+  var m=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([p.lng,p.lat]).setPopup(popup).addTo(map);
+  markers[p.id]=m; popups[p.id]=popup;
+}
+function removeMarker(id){if(markers[id]){markers[id].remove();delete markers[id];}if(popups[id])delete popups[id];}
+function refreshMarker(p){removeMarker(p.id);addMarker(p);}
+
+function buildPopupHTML(p){
+  var v=getVotes(p); var mv=myVote(p);
+  var isAdmin=S.role==='admin';
+  var adminBtns='';
+  if(isAdmin){
+    if(p.status!=='accepted') adminBtns+='<button class="pop-btn acc" onclick="popupAction('+p.id+',\'accepted\')">✓ Seleccionar</button>';
+    if(p.status!=='rejected') adminBtns+='<button class="pop-btn rej" onclick="popupAction('+p.id+',\'rejected\')">✕ Descartar</button>';
+  }
+  var scoreStr=(v.score>0?'+':'')+v.score;
+  var upCls=mv===1?'pop-vbtn voted-up':'pop-vbtn';
+  var dnCls=mv===-1?'pop-vbtn voted-dn':'pop-vbtn';
+  return '<div class="pop-inner">'+
+    '<div class="pop-top"><span class="pop-ico">'+TM[p.type].icon+'</span>'+
+    '<div><div class="pop-name">'+p.name+'</div><div class="pop-type">'+TM[p.type].label+'</div></div></div>'+
+    '<div class="pop-desc">'+p.desc+'</div>'+
+    '<div class="pop-votes">'+
+      '<button class="'+upCls+'" onclick="castVote('+p.id+',1)">👍 '+v.up+'</button>'+
+      '<button class="'+dnCls+'" onclick="castVote('+p.id+',-1)">👎 '+v.dn+'</button>'+
+      '<span class="pop-score" style="color:'+scoreColor(v.score)+'">'+scoreStr+'</span>'+
+    '</div>'+
+    '<div class="pop-foot"><span class="pop-author">por '+p.author+'</span>'+
+    '<div class="pop-acts">'+adminBtns+'</div></div>'+
+    '</div>';
+}
+window.popupAction=function(id,status){
+  changeStatus(id,status);
+  var p=S.proposals.find(function(x){return x.id===id;});
+  if(popups[id]&&popups[id].isOpen()) popups[id].setHTML(buildPopupHTML(p));
+};
+
+function selectProposal(id){
+  if(S.selectedId===id){S.selectedId=null;closeAllPopups();}
+  else{
+    S.selectedId=id;
+    closeAllPopups();
+    var m=markers[id];
+    if(m){
+      var p=S.proposals.find(function(x){return x.id===id;});
+      popups[id].setHTML(buildPopupHTML(p));
+      m.togglePopup();
+      var c=m.getLngLat();
+      map.flyTo({center:[c.lng,c.lat],zoom:Math.max(map.getZoom(),14),duration:380});
+    }
+  }
+  renderList();
+}
+function closeAllPopups(){Object.values(markers).forEach(function(m){if(m.getPopup()&&m.getPopup().isOpen())m.togglePopup();});}
+
+// ══════════════════════════════════════════════════════
+//  RENDER LIST
+// ══════════════════════════════════════════════════════
+function renderList(){
+  var el=document.getElementById('list');
+  if(S.tab==='ranking'){renderRanking();return;}
+  var filtered=S.proposals.filter(function(p){
+    if(S.tab==='pending') return p.status==='pending';
+    if(S.tab==='accepted') return p.status==='accepted';
+    if(S.filterType!=='all') return p.type===S.filterType;
+    return true;
+  });
+  if(!filtered.length){el.innerHTML='<div class="empty"><div class="empty-ico">🗺️</div>Nada aquí todavía</div>';return;}
+  el.innerHTML=filtered.map(function(p){
+    var s=ST[p.status]; var tm=TM[p.type];
+    var sel=S.selectedId===p.id; var isAdmin=S.role==='admin';
+    var v=getVotes(p); var mv=myVote(p);
+    var scoreStr=(v.score>0?'+':'')+v.score;
+    var upCls=mv===1?'vbtn voted-up':'vbtn';
+    var dnCls=mv===-1?'vbtn voted-dn':'vbtn';
+    var adminBtns='';
+    if(isAdmin){
+      if(p.status!=='accepted') adminBtns+='<button class="act acc" title="Seleccionar" onclick="event.stopPropagation();changeStatus('+p.id+',\'accepted\')">✓</button>';
+      if(p.status!=='rejected') adminBtns+='<button class="act rej" title="Descartar" onclick="event.stopPropagation();changeStatus('+p.id+',\'rejected\')">✕</button>';
+      adminBtns+='<button class="act del" title="Eliminar" onclick="event.stopPropagation();deleteProposal('+p.id+')">🗑</button>';
+    }
+    return '<div class="card s-'+p.status+(sel?' sel':'')+'" onclick="selectProposal('+p.id+')" data-id="'+p.id+'">'+
+      '<div class="card-top">'+
+        '<div class="card-ico">'+tm.icon+'</div>'+
+        '<div class="card-meta"><div class="card-name">'+p.name+'</div><div class="card-type">'+tm.label+'</div></div>'+
+        '<span class="sbadge '+s.cls+'">'+s.label+'</span>'+
+      '</div>'+
+      '<div class="card-desc">'+p.desc+'</div>'+
+      '<div class="vote-row" onclick="event.stopPropagation()">'+
+        '<button class="'+upCls+'" onclick="castVote('+p.id+',1)">👍 '+v.up+'</button>'+
+        '<button class="'+dnCls+'" onclick="castVote('+p.id+',-1)">👎 '+v.dn+'</button>'+
+        voteBar(p)+
+        '<span class="vote-score" style="color:'+scoreColor(v.score)+'">'+scoreStr+'</span>'+
+      '</div>'+
+      '<div class="card-foot">'+
+        '<span class="card-author"><div class="avt">'+p.author[0].toUpperCase()+'</div>'+p.author+'</span>'+
+        '<div class="card-acts">'+adminBtns+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function renderRanking(){
+  var el=document.getElementById('list');
+  var sorted=S.proposals.slice().sort(function(a,b){return getVotes(b).score-getVotes(a).score;});
+  if(!sorted.length){el.innerHTML='<div class="empty"><div class="empty-ico">🏆</div>Sin propuestas aún</div>';return;}
+  var maxScore=Math.max(1,getVotes(sorted[0]).score+1);
+  var medals=['🥇','🥈','🥉'];
+  el.innerHTML='<div style="padding:6px 0 4px;font-size:11px;color:var(--text3);text-align:center">Ordenadas por votos del grupo</div>'+
+  sorted.map(function(p,i){
+    var v=getVotes(p); var tm=TM[p.type]; var s=ST[p.status];
+    var scoreStr=(v.score>0?'+':'')+v.score;
+    var pct=Math.max(4,Math.round((v.score+maxScore)/(maxScore*2)*100));
+    var col=v.score>0?'var(--teal)':v.score<0?'var(--red)':'var(--text3)';
+    var medal=i<3?medals[i]:'#'+(i+1);
+    var medalCls=i===0?'r1':i===1?'r2':i===2?'r3':'';
+    return '<div class="rank-card">'+
+      '<div class="rank-num '+medalCls+'">'+medal+'</div>'+
+      '<div class="rank-body">'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+          '<span style="font-size:14px">'+tm.icon+'</span>'+
+          '<div style="flex:1;min-width:0">'+
+            '<div class="rank-name">'+p.name+'</div>'+
+            '<div class="rank-type">'+tm.label+' · <span class="sbadge '+s.cls+'">'+s.label+'</span></div>'+
+          '</div>'+
+        '</div>'+
+        '<div class="rank-bar-wrap"><div class="rank-bar" style="width:'+pct+'%;background:'+col+'"></div></div>'+
+        '<div style="font-size:10px;color:var(--text3);margin-top:3px">👍 '+v.up+' · 👎 '+v.dn+' · '+v.total+' votos</div>'+
+      '</div>'+
+      '<div class="rank-score" style="color:'+col+'">'+scoreStr+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function renderStats(){
+  var acc=S.proposals.filter(function(p){return p.status==='accepted';}).length;
+  var pen=S.proposals.filter(function(p){return p.status==='pending';}).length;
+  var rej=S.proposals.filter(function(p){return p.status==='rejected';}).length;
+  var totalVotes=S.proposals.reduce(function(acc,p){return acc+getVotes(p).total;},0);
+  document.getElementById('statsbar').innerHTML=
+    st(S.proposals.length,'Total','var(--text)')+
+    st(acc,'Seleccionadas','var(--teal)')+
+    st(pen,'Pendientes','var(--amber)')+
+    st(totalVotes,'Votos','var(--purple)');
+}
+function st(n,l,c){return '<div class="stat"><div class="stat-n" style="color:'+c+'">'+n+'</div><div class="stat-l">'+l+'</div></div>';}
+
+function renderFilterPills(){
+  var types=['all','hotel','restaurant','attraction','park','transport','activity'];
+  var labels={all:'Todos',hotel:'🏨',restaurant:'🍕',attraction:'🏛️',park:'🌿',transport:'🚌',activity:'🎭'};
+  document.getElementById('filter-pills').innerHTML=types.map(function(t){
+    var active=S.filterType===t&&S.tab==='all';
+    return '<button class="btn'+(active?' active':'')+'" onclick="setFilter(\''+t+'\')">'+labels[t]+'</button>';
+  }).join('');
+}
+
+function updateUserBadge(){
+  document.getElementById('user-name-label').textContent=S.username||'Sin nombre';
+}
+
+// ══════════════════════════════════════════════════════
+//  ACTIONS
+// ══════════════════════════════════════════════════════
+function setTab(t){
+  S.tab=t;
+  document.querySelectorAll('.tab').forEach(function(el){el.classList.remove('active');});
+  document.getElementById('tab-'+t).classList.add('active');
+  renderList();
+}
+function setFilter(t){S.filterType=t;renderFilterPills();renderList();}
+
+function changeStatus(id,status){
+  var p=S.proposals.find(function(x){return x.id===id;});
+  if(!p) return;
+  p.status=status;
+  refreshMarker(p);
+  renderList();renderStats();saveProposals();
+  var lbl={accepted:'✓ Seleccionada',rejected:'✕ Descartada'};
+  toast(p.name+' → '+lbl[status],status==='accepted'?'g':'a');
+}
+function deleteProposal(id){
+  var p=S.proposals.find(function(x){return x.id===id;});
+  removeMarker(id);
+  S.proposals=S.proposals.filter(function(x){return x.id!==id;});
+  if(S.selectedId===id) S.selectedId=null;
+  renderList();renderStats();saveProposals();
+  if(p) toast('"'+p.name+'" eliminada','r');
+}
+
+// ══════════════════════════════════════════════════════
+//  GEOCODER (Nominatim)
+// ══════════════════════════════════════════════════════
+var _geoTimer = null;
+var _geoResults = [];
+
+function onGeoInput(){
+  var q = document.getElementById('geo-search').value.trim();
+  clearTimeout(_geoTimer);
+  document.getElementById('geo-results').classList.remove('open');
+  if(q.length < 3){ document.getElementById('geo-spin').classList.remove('show'); return; }
+  document.getElementById('geo-spin').classList.add('show');
+  _geoTimer = setTimeout(function(){ geocode(q); }, 420);
+}
+
+function onGeoKey(e){
+  if(e.key === 'Escape'){ document.getElementById('geo-results').classList.remove('open'); }
+}
+
+async function geocode(q){
+  try{
+    var url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&q='+encodeURIComponent(q)+'&accept-language=es';
+    var res = await fetch(url, { headers:{ 'Accept-Language':'es' } });
+    var data = await res.json();
+    document.getElementById('geo-spin').classList.remove('show');
+    _geoResults = data;
+    renderGeoResults(data);
+  } catch(e){
+    document.getElementById('geo-spin').classList.remove('show');
+    toast('Error al buscar ubicación','r');
+  }
+}
+
+function renderGeoResults(results){
+  var el = document.getElementById('geo-results');
+  if(!results.length){
+    el.innerHTML = '<div class="geo-result"><strong style="color:var(--text3)">Sin resultados</strong><span>Prueba con otro nombre o haz clic en el mapa</span></div>';
+    el.classList.add('open');
+    return;
+  }
+  el.innerHTML = results.map(function(r, i){
+    var parts = r.display_name.split(',');
+    var main = parts[0].trim();
+    var sub = parts.slice(1,3).join(',').trim();
+    return '<div class="geo-result" onclick="selectGeoResult('+i+')"><strong>'+main+'</strong><span>'+sub+'</span></div>';
+  }).join('');
+  el.classList.add('open');
+}
+
+function selectGeoResult(i){
+  var r = _geoResults[i];
+  if(!r) return;
+  var lng = parseFloat(parseFloat(r.lon).toFixed(5));
+  var lat = parseFloat(parseFloat(r.lat).toFixed(5));
+  S.pendingCoord = { lng:lng, lat:lat };
+
+  // auto-fill name field if empty
+  var nameEl = document.getElementById('f-name');
+  if(!nameEl.value.trim()){
+    nameEl.value = r.display_name.split(',')[0].trim();
+  }
+
+  // close dropdown
+  document.getElementById('geo-results').classList.remove('open');
+  document.getElementById('geo-search').value = r.display_name.split(',')[0].trim();
+
+  // place tmp marker and fly
+  if(window._tmpM) window._tmpM.remove();
+  var el = document.createElement('div');
+  el.innerHTML = '<div style="width:18px;height:18px;border-radius:50%;background:#1D9E75;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3)"></div>';
+  window._tmpM = new maplibregl.Marker({element:el}).setLngLat([lng,lat]).addTo(map);
+  map.flyTo({ center:[lng,lat], zoom:15, duration:600 });
+
+  updatePinHint();
+  toast('📍 '+r.display_name.split(',')[0].trim(),'g');
+}
+
+// close results on outside click
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.geo-wrap')) document.getElementById('geo-results').classList.remove('open');
+});
+
+// ══════════════════════════════════════════════════════
+//  ADD FORM
+// ══════════════════════════════════════════════════════
+function openAddPanel(){
+  S.addingMode=true;
+  document.getElementById('addform').classList.add('open');
+  document.getElementById('map-hint').classList.add('show');
+  if(S.username) document.getElementById('f-author').value=S.username;
+  updatePinHint();
+}
+function closeAddPanel(){
+  S.addingMode=false;S.pendingCoord=null;
+  document.getElementById('addform').classList.remove('open');
+  document.getElementById('map-hint').classList.remove('show');
+  document.getElementById('geo-search').value='';
+  document.getElementById('geo-results').classList.remove('open');
+  if(window._tmpM){window._tmpM.remove();window._tmpM=null;}
+}
+function updatePinHint(){
+  var el=document.getElementById('pin-hint');
+  if(S.pendingCoord){el.className='pin-hint ok';el.textContent='📍 Ubicación fijada ('+S.pendingCoord.lat+', '+S.pendingCoord.lng+')';}
+  else{el.className='pin-hint';el.textContent='👆 Haz clic en el mapa para fijar la ubicación';}
+}
+function submitProposal(){
+  var name=document.getElementById('f-name').value.trim();
+  var author=document.getElementById('f-author').value.trim();
+  var desc=document.getElementById('f-desc').value.trim();
+  var type=document.getElementById('f-type').value;
+  if(!name||!author||!desc){toast('Rellena nombre, tu nombre y descripción','r');return;}
+  var coord=S.pendingCoord||{lng:12.4822+(Math.random()-.5)*.02,lat:41.8965+(Math.random()-.5)*.02};
+  var p={id:S.nextId++,name:name,type:type,author:author,desc:desc,status:'pending',lng:coord.lng,lat:coord.lat,votes:{}};
+  S.proposals.push(p);
+  if(map&&map.loaded()) addMarker(p);
+  renderList();renderStats();saveProposals();
+  document.getElementById('f-name').value='';
+  document.getElementById('f-desc').value='';
+  document.getElementById('geo-search').value='';
+  document.getElementById('geo-results').classList.remove('open');
+  if(window._tmpM){window._tmpM.remove();window._tmpM=null;}
+  closeAddPanel();setTab('all');
+  toast('"'+name+'" añadida 🗺️','g');
+  setTimeout(function(){selectProposal(p.id);},300);
+}
+
+// ══════════════════════════════════════════════════════
+//  USER / AUTH
+// ══════════════════════════════════════════════════════
+function saveUsername(){
+  var u=document.getElementById('inp-username').value.trim();
+  if(!u){document.getElementById('user-err').textContent='Introduce tu nombre';return;}
+  S.username=u;
+  saveUser(u);
+  closeModal('modal-user');
+  updateUserBadge();
+  document.getElementById('f-author').value=u;
+  toast('Hola, '+u+' 👋','g');
+  renderList();
+}
+function toggleRole(){
+  if(S.role==='admin') logoutAdmin();
+  else{openModal('modal-login');setTimeout(function(){document.getElementById('login-pass').focus();},80);}
+}
+function doLogin(){
+  var pass=document.getElementById('login-pass').value;
+  if(pass===S.adminPass){
+    S.role='admin';
+    document.getElementById('login-pass').value='';
+    document.getElementById('login-err').textContent='';
+    closeModal('modal-login');
+    updateRoleUI();renderList();
+    Object.values(markers).forEach(function(m){if(m.getPopup()&&m.getPopup().isOpen())m.togglePopup();});
+    toast('Modo administrador activado 🔐','g');
+  }else{
+    document.getElementById('login-err').textContent='Contraseña incorrecta';
+    document.getElementById('login-pass').value='';
+  }
+}
+function logoutAdmin(){S.role='member';updateRoleUI();renderList();toast('Sesión de admin cerrada','a');}
+function updateRoleUI(){
+  var isAdmin=S.role==='admin';
+  document.getElementById('admin-badge').style.display=isAdmin?'':'none';
+  document.getElementById('btn-role').textContent=isAdmin?'Cerrar sesión admin':'Modo admin';
+  document.getElementById('btn-role').className=isAdmin?'btn danger':'btn';
+}
+function doChangePass(){
+  var p1=document.getElementById('np1').value;
+  var p2=document.getElementById('np2').value;
+  if(!p1||p1.length<4){document.getElementById('pass-err').textContent='Mínimo 4 caracteres';return;}
+  if(p1!==p2){document.getElementById('pass-err').textContent='No coinciden';return;}
+  S.adminPass=p1;savePass(p1);
+  closeModal('modal-pass');
+  document.getElementById('np1').value='';document.getElementById('np2').value='';
+  document.getElementById('pass-err').textContent='';
+  toast('Contraseña actualizada 🔑','g');
+}
+
+// ══════════════════════════════════════════════════════
+//  MODALS / TOASTS
+// ══════════════════════════════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('open');}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')document.querySelectorAll('.modal-bg.open').forEach(function(el){el.classList.remove('open');});});
+document.querySelectorAll('.modal-bg').forEach(function(el){el.addEventListener('click',function(e){if(e.target===el)el.classList.remove('open');});});
+function toast(msg,type){
+  var el=document.createElement('div');
+  el.className='toast '+(type||'g');
+  el.textContent=msg;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(function(){el.remove();},2700);
+}
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+async function boot(){
+  await loadState();
+  initMap();
+  renderStats();renderList();renderFilterPills();updateRoleUI();updateUserBadge();
+  // prompt username if not set
+  if(!S.username){
+    setTimeout(function(){
+      openModal('modal-user');
+      document.getElementById('inp-username').focus();
+    },600);
+  }
+}
+boot();
+</script>
+</body>
+</html>
