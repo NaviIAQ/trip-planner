@@ -50,7 +50,8 @@ html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--t
 .body{display:flex;flex:1;overflow:hidden}
 .sidebar{width:310px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg);overflow:hidden}
 .map-wrap{flex:1;position:relative}
-#map{width:100%;height:100%}
+#view-map{flex:1;position:relative}
+#map{position:absolute;inset:0;width:100%;height:100%}
 
 /* ── agenda view ── */
 .agenda{width:100%;flex:1;overflow-y:auto;padding:12px 14px}
@@ -790,24 +791,27 @@ var cityStarMarkers=[];
 function renderCityStars(){
   cityStarMarkers.forEach(function(m){m.remove();});
   cityStarMarkers=[];
-  // geocode each unique city that has a name
   var seen={};
+  var queue=[];
   S.days.forEach(function(d){
-    if(!d.city||seen[d.city]) return;
-    seen[d.city]=true;
-    geocodeCityForStar(d.city);
+    if(!d.city) return;
+    // handle "City + City2" — split both
+    var parts=d.city.split('+');
+    parts.forEach(function(part){
+      var clean=cleanCityName(part);
+      if(clean&&clean.length>1&&!seen[clean]){
+        seen[clean]=true;
+        queue.push({raw:part.trim(),clean:clean});
+      }
+    });
+  });
+  // stagger requests 400ms apart to avoid Nominatim rate limit
+  queue.forEach(function(item,i){
+    setTimeout(function(){geocodeCityForStar(item.raw,item.clean);},i*500);
   });
 }
-async function geocodeCityForStar(city){
+async function geocodeCityForStar(raw,clean){
   try{
-    // strip decorators like "— Llegada", "+ Unawatuna", "Tren a", "Vuelo 10:15h" etc.
-    var clean=city
-      .replace(/—.*$/,'').replace(/–.*$/,'')   // remove em-dash suffixes
-      .replace(/\+.*$/,'')                       // remove + second city (handle separately)
-      .replace(/^Tren a\s+/i,'')                 // "Tren a Ella" → "Ella"
-      .replace(/Vuelo.*/i,'')                    // "Vuelo 10:15h" → skip
-      .replace(/Despedida.*/i,'')
-      .trim();
     if(!clean||clean.length<2) return;
     var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&q='+encodeURIComponent(clean+' '+S.country)+'&accept-language=es';
     var res=await fetch(url,{headers:{'Accept-Language':'es'}});
@@ -816,14 +820,11 @@ async function geocodeCityForStar(city){
     var lng=parseFloat(data[0].lon),lat=parseFloat(data[0].lat);
     var el=document.createElement('div');
     el.className='city-star';
-    el.innerHTML='<div class="city-star-pin">⭐</div><div class="city-star-lbl">'+clean+'</div>';
+    // display the clean name capitalised
+    var displayName=clean.charAt(0).toUpperCase()+clean.slice(1);
+    el.innerHTML='<div class="city-star-pin">⭐</div><div class="city-star-lbl">'+displayName+'</div>';
     var m=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([lng,lat]).addTo(map);
     cityStarMarkers.push(m);
-    // if city has "+", geocode second part too
-    if(city.indexOf('+')!==-1){
-      var second=city.split('+')[1].trim().replace(/—.*$/,'').replace(/–.*$/,'').trim();
-      if(second&&second.length>1) geocodeCityForStar(second);
-    }
   }catch(e){}
 }
 
@@ -863,40 +864,54 @@ function mapFitAll(){
   S.filterDay='all';renderDayFilter();renderListPanel();
 }
 
+function cleanCityName(city){
+  return (city||'')
+    .replace(/—.*$/,'').replace(/–.*$/,'')
+    .replace(/\+.*$/,'')
+    .replace(/^Tren a\s+/i,'')
+    .replace(/Vuelo.*/i,'')
+    .replace(/Despedida.*/i,'')
+    .trim().toLowerCase();
+}
+
 function mapFitToday(){
   if(!map||!S.days.length)return;
   var day=S.days[_dayNavIdx];
   var targetDate=day.date;
   var pts=S.proposals.filter(function(p){return p.dayDate===targetDate&&p.status!=='rejected';}).map(function(p){return[p.lng,p.lat];});
 
-  // find city star for this day
-  var cityName=day.city?day.city.replace(/—.*$/,'').replace(/–.*$/,'').replace(/\+.*$/,'').replace(/^Tren a\s+/i,'').replace(/Vuelo.*/i,'').replace(/Despedida.*/i,'').trim():'';
+  // find matching city star
+  var cityClean=cleanCityName(day.city);
   var starMatch=null;
-  if(cityName){
+  if(cityClean){
     cityStarMarkers.forEach(function(m){
       var lbl=m.getElement().querySelector('.city-star-lbl');
-      if(lbl&&lbl.textContent.toLowerCase()===cityName.toLowerCase()) starMatch=m;
+      if(lbl&&cleanCityName(lbl.textContent)===cityClean) starMatch=m;
     });
+    // fallback: partial match
+    if(!starMatch){
+      cityStarMarkers.forEach(function(m){
+        var lbl=m.getElement().querySelector('.city-star-lbl');
+        if(lbl&&cityClean.indexOf(cleanCityName(lbl.textContent))!==-1) starMatch=m;
+        if(lbl&&cleanCityName(lbl.textContent).indexOf(cityClean)!==-1) starMatch=m;
+      });
+    }
   }
 
   if(!pts.length&&starMatch){
     var c=starMatch.getLngLat();
-    map.flyTo({center:[c.lng,c.lat],zoom:12,duration:600});
+    map.flyTo({center:[c.lng,c.lat],zoom:12,duration:500});
     return;
   }
-  if(!pts.length&&!starMatch){
-    if(cityName) toast('Sin propuestas para '+cityName,'a');
-    map.flyTo({center:S.countryCenter,zoom:S.countryZoom,duration:600});
+  if(!pts.length){
+    map.flyTo({center:S.countryCenter,zoom:S.countryZoom,duration:500});
     return;
   }
-
-  // add star to points for better framing
   if(starMatch){var c=starMatch.getLngLat();pts.push([c.lng,c.lat]);}
-
-  if(pts.length===1){map.flyTo({center:pts[0],zoom:13,duration:600});}
+  if(pts.length===1){map.flyTo({center:pts[0],zoom:13,duration:500});}
   else{
     var lngs=pts.map(function(p){return p[0];}),lats=pts.map(function(p){return p[1];});
-    map.fitBounds([[Math.min.apply(null,lngs),Math.min.apply(null,lats)],[Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:60,maxZoom:14,duration:600});
+    map.fitBounds([[Math.min.apply(null,lngs),Math.min.apply(null,lats)],[Math.max.apply(null,lngs),Math.max.apply(null,lats)]],{padding:60,maxZoom:14,duration:500});
   }
 }
 
